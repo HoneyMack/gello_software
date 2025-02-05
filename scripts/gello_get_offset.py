@@ -24,12 +24,14 @@ class Args:
     gripper: bool = True
     """Whether or not the gripper is attached."""
 
+    start_id: int = 1  # dynamixel servo ID starts start_id
+
+    baudrate: int = 57600 # baudrate of dynamixel servos
+
     def __post_init__(self):
         assert len(self.joint_signs) == len(self.start_joints)
         for idx, j in enumerate(self.joint_signs):
-            assert (
-                j == -1 or j == 1
-            ), f"Joint idx: {idx} should be -1 or 1, but got {j}."
+            assert j == -1 or j == 1, f"Joint idx: {idx} should be -1 or 1, but got {j}."
 
     @property
     def num_robot_joints(self) -> int:
@@ -42,8 +44,8 @@ class Args:
 
 
 def get_config(args: Args) -> None:
-    joint_ids = list(range(1, args.num_joints + 1))
-    driver = DynamixelDriver(joint_ids, port=args.port, baudrate=57600)
+    joint_ids = list(range(args.start_id, args.num_joints + args.start_id))
+    driver = DynamixelDriver(joint_ids, port=args.port, baudrate=args.baudrate)
 
     # assume that the joint state shouold be args.start_joints
     # find the offset, which is a multiple of np.pi/2 that minimizes the error between the current joint state and args.start_joints
@@ -64,9 +66,7 @@ def get_config(args: Args) -> None:
         for i in range(args.num_robot_joints):
             best_offset = 0
             best_error = 1e6
-            for offset in np.linspace(
-                -8 * np.pi, 8 * np.pi, 8 * 4 + 1
-            ):  # intervals of pi/2
+            for offset in np.linspace(-8 * np.pi, 8 * np.pi, 8 * 4 + 1):  # intervals of pi/2
                 error = get_error(offset, i, curr_joints)
                 if error < best_error:
                     best_error = error
