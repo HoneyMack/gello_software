@@ -12,7 +12,7 @@ class Args:
     robot: str = "xarm"
     robot_port: int = 6001
     hostname: str = "127.0.0.1"
-    robot_ip: str = "192.168.1.10"
+    robot_ip: str = "192.168.10.251"
 
 
 def launch_robot_server(args: Args):
@@ -53,12 +53,27 @@ def launch_robot_server(args: Args):
             xml_path=xml, gripper_xml_path=gripper_xml, port=port, host=args.hostname
         )
         server.serve()
+    elif args.robot == "sim_lite6":
+            from gello.robots.sim_robot import MujocoRobotServer
 
+            MENAGERIE_ROOT: Path = (
+                Path(__file__).parent.parent / "third_party" / "mujoco_menagerie"
+            )
+            xml = MENAGERIE_ROOT / "ufactory_lite6" / "lite6.xml"
+            gripper_xml = None
+            server = MujocoRobotServer(
+                xml_path=xml, gripper_xml_path=gripper_xml, port=port, host=args.hostname
+            )
+            server.serve()
     else:
         if args.robot == "xarm":
             from gello.robots.xarm_robot import XArmRobot
 
             robot = XArmRobot(ip=args.robot_ip)
+        elif args.robot == "lite6":
+            from gello.robots.lite6_robot import Lite6Robot
+
+            robot = Lite6Robot(ip=args.robot_ip)
         elif args.robot == "ur":
             from gello.robots.ur import URRobot
 
