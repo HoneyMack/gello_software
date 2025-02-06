@@ -115,8 +115,16 @@ class Rate:
 
 
 class Lite6Robot(Robot):
-    GRIPPER_OPEN = 800
-    GRIPPER_CLOSE = 0
+    # EEFにOpenParallelGripper(XL330, ID:1)を使った場合の構成
+    GRIPPER_OPEN = 3755 - 100
+    GRIPPER_CLOSE = 911 + 100
+    DXL_ID = 1
+    DYNAMIXEL_BAUDRATE = 57600
+    ADDR_TORQUE_ENABLE = 64
+    ADDR_GOAL_POSITION = 116
+    ADDR_PRESENT_POSITION = 132
+    TORQUE_ENABLE = 1  # Value for enabling the torque
+    TORQUE_DISABLE = 0  # Value for disabling the torque
     #  MAX_DELTA = 0.2
     DEFAULT_MAX_DELTA = 0.05
 
@@ -125,8 +133,7 @@ class Lite6Robot(Robot):
 
     def get_joint_state(self) -> np.ndarray:
         state = self.get_state()
-        # gripper = state.gripper_pos()
-        gripper = 0 # TODO: OpenParallelGripperを使った場合に調整
+        gripper = state.gripper_pos()
         all_dofs = np.concatenate([state.joints(), np.array([gripper])])
         return all_dofs
 
@@ -136,17 +143,19 @@ class Lite6Robot(Robot):
         elif len(joint_state) == 7:
             self.set_command(joint_state[:6], joint_state[6])
         else:
-            raise ValueError(
-                f"Invalid joint state: {joint_state}, len={len(joint_state)}"
-            )
+            raise ValueError(f"Invalid joint state: {joint_state}, len={len(joint_state)}")
 
     def stop(self):
         self.running = False
-        if self.robot is not None:
-            self.robot.disconnect()
-
         if self.command_thread is not None:
             self.command_thread.join()
+
+        if self.robot is not None:
+            self.eef_packetHandler.write1ByteTxRx(
+                self.eef_portHandler, self.DXL_ID, self.ADDR_TORQUE_ENABLE, self.TORQUE_DISABLE
+            )  # Torque Disable
+            self.eef_portHandler.closePort()
+            self.robot.disconnect()
 
     def __init__(
         self,
@@ -160,14 +169,18 @@ class Lite6Robot(Robot):
         self.max_delta = max_delta
         if real:
             from xarm.wrapper import XArmAPI
+            from dynamixel_sdk import PacketHandler
+            from xarm_eef_dynamixel_wrapper.endeffector_port_handler import EndEffectorPortHandler
 
             self.robot = XArmAPI(ip, is_radian=True)
+            self.eef_portHandler = EndEffectorPortHandler(self.robot)
+            self.eef_packetHandler = PacketHandler(2.0)  # 2.0 is protocol version
         else:
             self.robot = None
 
         self._control_frequency = control_frequency
         self._clear_error_states()
-        # self._set_gripper_position(self.GRIPPER_OPEN)
+        self._set_gripper_position(self.GRIPPER_OPEN)
 
         self.last_state_lock = threading.Lock()
         self.target_command_lock = threading.Lock()
@@ -206,40 +219,49 @@ class Lite6Robot(Robot):
         time.sleep(1)
         self.robot.set_state(state=0)
         time.sleep(1)
-        # self.robot.set_gripper_enable(True)
-        # time.sleep(1)
-        # self.robot.set_gripper_mode(0)
-        # time.sleep(1)
-        # self.robot.set_gripper_speed(3000)
-        # time.sleep(1)
+
+        # setup gripper
+        self.eef_portHandler.openPort()
+        self.eef_portHandler.setBaudRate(self.DYNAMIXEL_BAUDRATE)
+        time.sleep(1)
+        self.eef_packetHandler.reboot(self.eef_portHandler, self.DXL_ID)  # reboot dynamixel
+        time.sleep(1)
+        self.eef_packetHandler.write1ByteTxRx(
+            self.eef_portHandler, self.DXL_ID, self.ADDR_TORQUE_ENABLE, self.TORQUE_ENABLE
+        )  # Torque Enable
+        time.sleep(1)
 
     def _get_gripper_pos(self) -> float:
         if self.robot is None:
             return 0.0
-        code, gripper_pos = self.robot.get_gripper_position()
-        while code != 0 or gripper_pos is None:
-            print(f"Error code {code} in get_gripper_position(). {gripper_pos}")
+
+        # dynamixelの角度を取得
+        dxl_present_position, dxl_comm_result, dxl_error = self.eef_packetHandler.read4ByteTxRx(
+            self.eef_portHandler, self.DXL_ID, self.ADDR_PRESENT_POSITION
+        )
+        while dxl_comm_result != 0 or dxl_error != 0:
+            print("%s" % self.eef_packetHandler.getTxRxResult(dxl_comm_result))
+            print("%s" % self.eef_packetHandler.getRxPacketError(dxl_error))
             time.sleep(0.001)
-            code, gripper_pos = self.robot.get_gripper_position()
-            if code == 22:
+            dxl_present_position, dxl_comm_result, dxl_error = self.eef_packetHandler.read4ByteTxRx(
+                self.eef_portHandler, self.DXL_ID, self.ADDR_PRESENT_POSITION
+            )
+            if dxl_error == 128:  # 128 is error code for hardware error
+                print("Hardware Error detected. rebooting dynamixel")
                 self._clear_error_states()
 
-        normalized_gripper_pos = (gripper_pos - self.GRIPPER_OPEN) / (
-            self.GRIPPER_CLOSE - self.GRIPPER_OPEN
-        )
+        normalized_gripper_pos = (dxl_present_position - self.GRIPPER_OPEN) / (self.GRIPPER_CLOSE - self.GRIPPER_OPEN)
         return normalized_gripper_pos
 
     def _set_gripper_position(self, pos: int) -> None:
         if self.robot is None:
             return
-        self.robot.set_gripper_position(pos, wait=False)
-        # while self.robot.get_is_moving():
-        #     time.sleep(0.01)
+        dxl_comm_result, dxl_error = self.eef_packetHandler.write4ByteTxRx(
+            self.eef_portHandler, self.DXL_ID, self.ADDR_GOAL_POSITION, pos
+        )
 
     def _robot_thread(self):
-        rate = Rate(
-            duration=1 / self._control_frequency
-        )  # command and update rate for robot
+        rate = Rate(duration=1 / self._control_frequency)  # command and update rate for robot
         step_times = []
         count = 0
 
@@ -248,9 +270,7 @@ class Lite6Robot(Robot):
             # update last state
             self.last_state = self._update_last_state()
             with self.target_command_lock:
-                joint_delta = np.array(
-                    self.target_command["joints"] - self.last_state.joints()
-                )
+                joint_delta = np.array(self.target_command["joints"] - self.last_state.joints())
                 gripper_command = self.target_command["gripper"]
 
             norm = np.linalg.norm(joint_delta)
@@ -265,13 +285,12 @@ class Lite6Robot(Robot):
             self._set_position(
                 self.last_state.joints() + delta,
             )
-            # TODO: OpenParallelGripperを使った場合に調整
-            # if gripper_command is not None:
-            #     set_point = gripper_command
-            #     self._set_gripper_position(
-            #         self.GRIPPER_OPEN
-            #         + set_point * (self.GRIPPER_CLOSE - self.GRIPPER_OPEN)
-            #     )
+
+            if gripper_command is not None:
+                set_point = gripper_command
+                self._set_gripper_position(
+                    int(self.GRIPPER_OPEN + set_point * (self.GRIPPER_CLOSE - self.GRIPPER_OPEN))
+                )
             self.last_state = self._update_last_state()
 
             rate.sleep()
@@ -291,8 +310,7 @@ class Lite6Robot(Robot):
             if self.robot is None:
                 return RobotState(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, np.zeros(3))
 
-            # gripper_pos = self._get_gripper_pos()
-            gripper_pos = 0 # TODO: OpenParallelGripperを使った場合に調整
+            gripper_pos = self._get_gripper_pos()
 
             code, servo_angle = self.robot.get_servo_angle(is_radian=True)
             while code != 0:
