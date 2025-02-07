@@ -15,3 +15,9 @@ xarm
 xarm-python-sdk
 numpy-quaternion
 termcolor
+opencv-python
+pyrealsense2
+pygame
+natsort
+matplotlib
+mediapy
