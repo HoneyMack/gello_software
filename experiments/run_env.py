@@ -10,10 +10,12 @@ import tyro
 
 from gello.agents.agent import BimanualAgent, DummyAgent
 from gello.agents.gello_agent import GelloAgent
+from gello.agents.pi0_agent import Pi0Agent
 from gello.data_utils.format_obs import save_frame
 from gello.env import RobotEnv
 from gello.robots.robot import PrintRobot
 from gello.zmq_core.robot_node import ZMQClientRobot
+from gello.zmq_core.camera_node import ZMQClientCamera
 
 
 def print_color(*args, color=None, attrs=(), **kwargs):
@@ -42,16 +44,21 @@ class Args:
     bimanual: bool = False
     verbose: bool = False
 
+    # pi0用の設定
+    policy_path: str = "./outputs/train/lite6_pi0"
+    task: str = "Pick up the red square block and Put it onto the white plate."
+    varbose: bool = True
 
-def main(args):
+
+def main(args: Args):
     if args.mock:
         robot_client = PrintRobot(8, dont_print=True)
         camera_clients = {}
     else:
         camera_clients = {
             # you can optionally add camera nodes here for imitation learning purposes
-            # "wrist": ZMQClientCamera(port=args.wrist_camera_port, host=args.hostname),
-            # "base": ZMQClientCamera(port=args.base_camera_port, host=args.hostname),
+            "wrist": ZMQClientCamera(port=args.wrist_camera_port, host=args.hostname),
+            "base": ZMQClientCamera(port=args.base_camera_port, host=args.hostname),
         }
         robot_client = ZMQClientRobot(port=args.robot_port, host=args.hostname)
     env = RobotEnv(robot_client, control_rate_hz=args.hz, camera_dict=camera_clients)
@@ -68,9 +75,7 @@ def main(args):
             from gello.agents.quest_agent import SingleArmQuestAgent
 
             left_agent = SingleArmQuestAgent(robot_type=args.robot_type, which_hand="l")
-            right_agent = SingleArmQuestAgent(
-                robot_type=args.robot_type, which_hand="r"
-            )
+            right_agent = SingleArmQuestAgent(robot_type=args.robot_type, which_hand="r")
             agent = BimanualAgent(left_agent, right_agent)
             # raise NotImplementedError
         elif args.agent == "spacemouse":
@@ -78,9 +83,7 @@ def main(args):
 
             left_path = "/dev/hidraw0"
             right_path = "/dev/hidraw1"
-            left_agent = SpacemouseAgent(
-                robot_type=args.robot_type, device_path=left_path, verbose=args.verbose
-            )
+            left_agent = SpacemouseAgent(robot_type=args.robot_type, device_path=left_path, verbose=args.verbose)
             right_agent = SpacemouseAgent(
                 robot_type=args.robot_type,
                 device_path=right_path,
@@ -112,13 +115,9 @@ def main(args):
                     gello_port = usb_ports[0]
                     print(f"using port {gello_port}")
                 else:
-                    raise ValueError(
-                        "No gello port found, please specify one or plug in gello"
-                    )
+                    raise ValueError("No gello port found, please specify one or plug in gello")
             if args.start_joints is None:
-                reset_joints = np.deg2rad(
-                    [0, -90, 90, -90, -90, 0, 0]
-                )  # Change this to your own reset joints
+                reset_joints = np.deg2rad([0, 0, 0, 0, 0, 0, 0])  # Change this to your own reset joints
             else:
                 reset_joints = args.start_joints
             agent = GelloAgent(port=gello_port, start_joints=args.start_joints)
@@ -140,6 +139,8 @@ def main(args):
             agent = SpacemouseAgent(robot_type=args.robot_type, verbose=args.verbose)
         elif args.agent == "dummy" or args.agent == "none":
             agent = DummyAgent(num_dofs=robot_client.num_dofs())
+        elif args.agent == "pi0":
+            agent = Pi0Agent(policy_path=args.policy_path, task=args.task, verbose=args.verbose)
         elif args.agent == "policy":
             raise NotImplementedError("add your imitation policy here if there is one")
         else:
@@ -150,6 +151,8 @@ def main(args):
     start_pos = agent.act(env.get_obs())
     obs = env.get_obs()
     joints = obs["joint_positions"]
+
+    start_pos = start_pos[: len(joints)]
 
     abs_deltas = np.abs(start_pos - joints)
     id_max_joint_delta = np.argmax(abs_deltas)
@@ -165,21 +168,18 @@ def main(args):
             start_pos[id_mask],
             joints[id_mask],
         ):
-            print(
-                f"joint[{i}]: \t delta: {delta:4.3f} , leader: \t{joint:4.3f} , follower: \t{current_j:4.3f}"
-            )
+            print(f"joint[{i}]: \t delta: {delta:4.3f} , leader: \t{joint:4.3f} , follower: \t{current_j:4.3f}")
         return
 
     print(f"Start pos: {len(start_pos)}", f"Joints: {len(joints)}")
-    assert len(start_pos) == len(
-        joints
-    ), f"agent output dim = {len(start_pos)}, but env dim = {len(joints)}"
+    assert len(start_pos) == len(joints), f"agent output dim = {len(start_pos)}, but env dim = {len(joints)}"
 
     max_delta = 0.05
     for _ in range(25):
         obs = env.get_obs()
         command_joints = agent.act(obs)
         current_joints = obs["joint_positions"]
+        command_joints = command_joints[: len(current_joints)]
         delta = command_joints - current_joints
         max_joint_delta = np.abs(delta).max()
         if max_joint_delta > max_delta:
@@ -189,15 +189,14 @@ def main(args):
     obs = env.get_obs()
     joints = obs["joint_positions"]
     action = agent.act(obs)
+    action = action[: len(joints)]
     if (action - joints > 0.5).any():
         print("Action is too big")
 
         # print which joints are too big
         joint_index = np.where(action - joints > 0.8)
         for j in joint_index:
-            print(
-                f"Joint [{j}], leader: {action[j]}, follower: {joints[j]}, diff: {action[j] - joints[j]}"
-            )
+            print(f"Joint [{j}], leader: {action[j]}, follower: {joints[j]}, diff: {action[j] - joints[j]}")
         exit()
 
     if args.use_save_interface:
@@ -225,11 +224,7 @@ def main(args):
             state = kb_interface.update()
             if state == "start":
                 dt_time = datetime.datetime.now()
-                save_path = (
-                    Path(args.data_dir).expanduser()
-                    / args.agent
-                    / dt_time.strftime("%m%d_%H%M%S")
-                )
+                save_path = Path(args.data_dir).expanduser() / args.agent / dt_time.strftime("%m%d_%H%M%S")
                 save_path.mkdir(parents=True, exist_ok=True)
                 print(f"Saving to {save_path}")
             elif state == "save":
@@ -239,6 +234,7 @@ def main(args):
                 save_path = None
             else:
                 raise ValueError(f"Invalid state {state}")
+        action = action[: len(joints)]
         obs = env.step(action)
 
 
