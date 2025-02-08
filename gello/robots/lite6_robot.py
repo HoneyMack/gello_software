@@ -119,7 +119,7 @@ class Lite6Robot(Robot):
     GRIPPER_OPEN = 3755 - 100
     GRIPPER_CLOSE = 911 + 100
     DXL_ID = 1
-    DYNAMIXEL_BAUDRATE = 57600
+    DYNAMIXEL_BAUDRATE = 1000000
     ADDR_TORQUE_ENABLE = 64
     ADDR_GOAL_POSITION = 116
     ADDR_PRESENT_POSITION = 132
@@ -161,7 +161,7 @@ class Lite6Robot(Robot):
         self,
         ip: str = "192.168.10.251",
         real: bool = True,
-        control_frequency: float = 100.0,
+        control_frequency: float = 200.0,
         max_delta: float = DEFAULT_MAX_DELTA,
     ):
         print(ip)
@@ -173,7 +173,7 @@ class Lite6Robot(Robot):
             from xarm_eef_dynamixel_wrapper.endeffector_port_handler import EndEffectorPortHandler
 
             self.robot = XArmAPI(ip, is_radian=True)
-            self.eef_portHandler = EndEffectorPortHandler(self.robot)
+            self.eef_portHandler = EndEffectorPortHandler(self.robot,baudrate=self.DYNAMIXEL_BAUDRATE, latency_timer=1)
             self.eef_packetHandler = PacketHandler(2.0)  # 2.0 is protocol version
         else:
             self.robot = None
