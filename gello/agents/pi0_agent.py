@@ -72,21 +72,22 @@ class Pi0Agent(Agent):
             print("Pi0Agent.act invoked")
 
         # カメラ画像の取得と変換 (inference_pi0_policy.py の例を参考)
-        wrist_rgb = obs["wrist_rgb"]
-        base_rgb = obs["base_rgb"]
+        wrist_rgb:np.ndarray = obs["wrist_rgb"]
+        base_rgb:np.ndarray = obs["base_rgb"]
         wrist_rgb = resize_image(wrist_rgb)
         base_rgb = resize_image(base_rgb)
-        # PI0Policy では (1, 3, H, W) 形式が期待されるので転置
-        wrist_rgb = wrist_rgb.permute(0, 3, 1, 2)
-        base_rgb = base_rgb.permute(0, 3, 1, 2)
-
+        # PI0Policy では (1, 3, H, W) 形式が期待されるので軸を追加して転置&numpy から torch.Tensor に変換
+        wrist_rgb = torch.from_numpy(wrist_rgb[np.newaxis, :].transpose(0, 3, 1, 2).astype(np.float32))
+        base_rgb = torch.from_numpy(base_rgb[np.newaxis, :].transpose(0, 3, 1, 2).astype(np.float32))
+        
         # 関節状態は position と velocity を連結
-        joint_pos = obs["joint_positions"]
-        joint_vel = obs["joint_velocities"]
-        ee_pos_quat = obs["ee_pos_quat"]
-        gripper_pos = obs["gripper_position"]
+        joint_pos = torch.from_numpy(obs["joint_positions"].astype(np.float32)) # (joint_num,)
+        joint_vel = torch.from_numpy(obs["joint_velocities"].astype(np.float32)) # (joint_num,)
+        ee_pos_quat = torch.from_numpy(obs["ee_pos_quat"].astype(np.float32)) # (7,)
+        gripper_pos = torch.from_numpy(obs["gripper_position"].astype(np.float32)).reshape([1]) # (1,)
 
-        joint_states = torch.cat([joint_pos, joint_vel, ee_pos_quat, gripper_pos], dim=1)
+        
+        joint_states = torch.cat([joint_pos, joint_vel, ee_pos_quat, gripper_pos], dim=0)[np.newaxis,:] # (1, joint_num*2+8)
 
         # Policy への入力辞書を作成
         policy_input = {
@@ -97,9 +98,9 @@ class Pi0Agent(Agent):
         }
         # 推論（inference_pi0_policy.py の例に則る）
         with torch.inference_mode():
-            action = self.policy.select_action(policy_input)
+            action = self.policy.select_action(policy_input) # (1, action_dim)
         # 結果は torch.Tensor として返されるため、numpy に変換
-        return action.cpu().numpy()
+        return action.cpu().numpy()[0,:] # (1, action_dim) -> (action_dim,) に変換して返す
 
 
 def main():
