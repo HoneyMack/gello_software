@@ -10,7 +10,6 @@ import tyro
 
 from gello.agents.agent import BimanualAgent, DummyAgent
 from gello.agents.gello_agent import GelloAgent
-from gello.agents.pi0_agent import Pi0Agent
 from gello.data_utils.format_obs import save_frame
 from gello.env import RobotEnv
 from gello.robots.robot import PrintRobot
@@ -31,10 +30,10 @@ class Args:
     agent: str = "none"
     robot_port: int = 6001
     wrist_camera_port: int = 5000
-    base_camera_port: int = 5001
+    base_camera_port: int = 5002
     hostname: str = "127.0.0.1"
     robot_type: str = None  # only needed for quest agent or spacemouse agent
-    hz: int = 100
+    hz: int = 50
     start_joints: Optional[Tuple[float, ...]] = None
 
     gello_port: Optional[str] = None
@@ -45,7 +44,7 @@ class Args:
     verbose: bool = False
 
     # pi0用の設定
-    policy_path: str = "./outputs/train/lite6_pi0"
+    policy_path: str = "models/020000_angleonly/pretrained_model"
     task: str = "Pick up the red square block and Put it onto the white plate."
     varbose: bool = True
 
@@ -140,7 +139,11 @@ def main(args: Args):
         elif args.agent == "dummy" or args.agent == "none":
             agent = DummyAgent(num_dofs=robot_client.num_dofs())
         elif args.agent == "pi0":
+            from gello.agents.pi0_agent import Pi0Agent
             agent = Pi0Agent(policy_path=args.policy_path, task=args.task, verbose=args.verbose)
+        elif args.agent == "diffusion":
+            from gello.agents.diffusion_agent import DiffusionAgent
+            agent = DiffusionAgent(policy_path=args.policy_path, task=args.task, verbose=args.verbose)
         elif args.agent == "policy":
             raise NotImplementedError("add your imitation policy here if there is one")
         else:
@@ -151,6 +154,8 @@ def main(args: Args):
     start_pos = agent.act(env.get_obs())
     obs = env.get_obs()
     joints = obs["joint_positions"]
+    
+    print("Start pos: ", start_pos)
 
     start_pos = start_pos[: len(joints)]
 
@@ -237,6 +242,7 @@ def main(args: Args):
         action = action[: len(joints)]
         obs = env.step(action)
 
-
+# python experiments/run_env.py --agent=diffusion --hz 1 --policy-path=models/diffusion/010000/pretrained_model
+# python experiments/run_env.py --agent=pi0 --hz 1 --policy-path=models/pi0/030000_angleonly/pretrained_model
 if __name__ == "__main__":
     main(tyro.cli(Args))
