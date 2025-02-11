@@ -8,8 +8,11 @@ from typing import Optional, Tuple
 import numpy as np
 import tyro
 
+from lerobot.configs import parser
 from gello.agents.agent import BimanualAgent, DummyAgent
 from gello.agents.gello_agent import GelloAgent
+from gello.agents.pi0_agent import Pi0AgentConfig, Pi0Agent
+from gello.agents.diffusion_agent import DiffusionAgent
 from gello.data_utils.format_obs import save_frame
 from gello.env import RobotEnv
 from gello.robots.robot import PrintRobot
@@ -44,11 +47,16 @@ class Args:
     verbose: bool = False
 
     # pi0用の設定
+    pi0: Pi0AgentConfig = None
     policy_path: str = "models/020000_angleonly/pretrained_model"
     task: str = "Pick up the red square block and Put it onto the white plate."
+    use_delta_action: bool = False  # モデルが角度の差分を出力する場合は True に設定
+    use_joint_vel: bool = False  # モデルが関節速度を入力として受け取る場合は True に設定
+    use_ee_pos_quat: bool = False  # モデルがエンドエフェクタの位置・姿勢を入力として受け取る場合は True に設定
     varbose: bool = True
 
 
+@parser.wrap()
 def main(args: Args):
     if args.mock:
         robot_client = PrintRobot(8, dont_print=True)
@@ -139,10 +147,8 @@ def main(args: Args):
         elif args.agent == "dummy" or args.agent == "none":
             agent = DummyAgent(num_dofs=robot_client.num_dofs())
         elif args.agent == "pi0":
-            from gello.agents.pi0_agent import Pi0Agent
-            agent = Pi0Agent(policy_path=args.policy_path, task=args.task, verbose=args.verbose)
+            agent = Pi0Agent(config=args.pi0)
         elif args.agent == "diffusion":
-            from gello.agents.diffusion_agent import DiffusionAgent
             agent = DiffusionAgent(policy_path=args.policy_path, task=args.task, verbose=args.verbose)
         elif args.agent == "policy":
             raise NotImplementedError("add your imitation policy here if there is one")
@@ -154,7 +160,7 @@ def main(args: Args):
     start_pos = agent.act(env.get_obs())
     obs = env.get_obs()
     joints = obs["joint_positions"]
-    
+
     print("Start pos: ", start_pos)
 
     start_pos = start_pos[: len(joints)]
@@ -242,7 +248,7 @@ def main(args: Args):
         action = action[: len(joints)]
         obs = env.step(action)
 
-# python experiments/run_env.py --agent=diffusion --hz 1 --policy-path=models/diffusion/010000/pretrained_model
-# python experiments/run_env.py --agent=pi0 --hz 1 --policy-path=models/pi0/030000_angleonly/pretrained_model
+
+# python experiments/run_env.py --agent=pi0 --hz 1 --pi0.policy_path=models/pi0/030000_delta/pretrained_model --pi0.use_delta_action=true
 if __name__ == "__main__":
-    main(tyro.cli(Args))
+    main()
