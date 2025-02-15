@@ -1,8 +1,18 @@
+# CAUTION
+This is a fork of the original GELLO repository. The original repository can be found [here](https://github.com/wuphilipp/gello_software). 
+
+This fork is used to support lite6 and [openpi](https://github.com/HoneyMack/openpi.git) policy execution.
+
+The repo has been only tested with Ubuntu 22.04 and CUDA 12.2. (Ubuntu 20.04 maybe works.)
+You can align the environment using the docker container provided in this [repo](https://github.com/HoneyMack/docker-deep-cuda-py3/tree/develop)
+
+The following README is also modified to align with the changes made in this fork. 
+
 # GELLO
 This is the central repo that holds the all the software for GELLO. See the website for the paper and other resources for GELLO https://wuphilipp.github.io/gello_site/
 See the GELLO hardware repo for the STL files and hardware instructions for building your own GELLO https://github.com/wuphilipp/gello_mechanical
 ```
-git clone https://github.com/wuphilipp/gello_software.git
+git clone https://github.com/HoneyMack/gello_software.git -b feature/openpi
 cd gello_software
 ```
 
@@ -11,27 +21,12 @@ cd gello_software
 </p>
 
 
-## Use your own enviroment
+# Install Gello
 ```
 git submodule init
 git submodule update
-pip install -r requirements.txt
-pip install -e .
-pip install -e third_party/DynamixelSDK/python
-```
-
-## Use with Docker
-First install ```docker``` following this [link](https://docs.docker.com/engine/install/ubuntu/) on your host machine.
-Then you can clone the repo and build the corresponding docker environment
-
-Build the docker image and tag it as gello:latest. If you are going to name it differently, you need to change the launch.py image name
-```
-docker build . -t gello:latest
-```
-
-We have provided an entry point into the docker container
-```
-python scripts/launch.py
+GIT_LFS_SKIP_SMUDGE=1 uv sync
+uv pip install -e .
 ```
 
 # GELLO configuration setup (PLEASE READ)
@@ -64,11 +59,13 @@ We have created a simple script to automatically detect the joint offset:
 
 * run 
 ```
-python scripts/gello_get_offset.py \
+uv run scripts/gello_get_offset.py \
     --start-joints 0 -1.57 1.57 -1.57 -1.57 0 \ # in radians
     --joint-signs 1 1 -1 1 1 1 \
-    --port /dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FT7WBG6
-# replace values with your own
+    --port /dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FT7WBG6 \
+    --start-id 2 \  # dynamixel servo ID starts start_id
+    --baudrate 1000000 # baudrate of dynamixel servos
+     # replace values with your own
 ```
 * Use the known starting joints for `start-joints`.
 * Use the `joint-signs` for your own robot (see below).
@@ -78,6 +75,7 @@ python scripts/gello_get_offset.py \
 * UR: `1 1 -1 1 1 1`
 * Panda: `1 -1 1 1 1 -1 1`
 * xArm: `1 1 1 1 1 1 1`
+* lite6: `1 1 1 1 1 1`
 
 The script prints out a list of joint offsets. Go to `gello/agents/gello_agent.py` and add a DynamixelRobotConfig to the PORT_CONFIG_MAP. You are now ready to run your GELLO!
 
@@ -90,13 +88,13 @@ For multiprocessing, we leverage [ZMQ](https://zeromq.org/)
 First test your GELLO with a simulated robot to make sure that the joint angles match as expected.
 In one terminal run
 ```
-python experiments/launch_nodes.py --robot <sim_ur, sim_panda, or sim_xarm>
+uv run experiments/launch_nodes.py --robot <sim_ur, sim_panda, sim_xarm or sim_lite6>
 ```
 This launched the robot node. A simulated robot using the mujoco viewer should appear.
 
 Then, launch your GELLO (the controller node).
 ```
-python experiments/run_env.py --agent=gello
+uv run experiments/run_env.py --agent=gello
 ```
 You should be able to use GELLO to control the simulated robot!
 
@@ -108,23 +106,38 @@ The supported robots are in `gello/robots`.
  * UR: [ur_rtde](https://sdurobotics.gitlab.io/ur_rtde/installation/installation.html)
  * panda: [polymetis](https://facebookresearch.github.io/fairo/polymetis/installation.html). If you use a different framework to control the panda, the code is easy to adpot. See/Modify `gello/robots/panda.py`
  * xArm: [xArm python SDK](https://github.com/xArm-Developer/xArm-Python-SDK)
+ * Lite6: [xArm python SDK](https://github.com/xArm-Developer/xArm-Python-SDK)
 
 ```
 # Launch all of the node
-python experiments/launch_nodes.py --robot=<your robot>
+uv run experiments/launch_nodes.py --robot=<your robot>
 # run the enviroment loop
-python experiments/run_env.py --agent=gello
+uv run experiments/run_env.py --agent=gello --hz=50 --gello_port=/dev/ttyUSB0
 ```
 
 Ideally you can start your GELLO near a known configuration each time. If this is possible, you can set the `--start-joint` flag with GELLO's known starting configuration. This also enables the robot to reset before you begin teleoperation.
 
 ## Collect data
+
 We have provided a simple example for collecting data with gello.
 To save trajectories with the keyboard, add the following flag `--use-save-interface`
 
-Data can then be processed using the demo_to_gdict script.
+Moreover, if you want to convert raw data with gello to lerobot, please follow instructions bellow.
+
+### Prerequisites
+ffmpeg with svt-av1 codec is required to convert gello raw data to lerobot dataset. 
+I provide a script to install ffmpeg with svt-av1 codec. 
+```bash
+./installer/install_ffmpeg.sh # PLEASE RUN ONLY ONCE!
 ```
-python gello/data_utils/demo_to_gdict.py --source-dir=<source dir location>
+### convertion
+Now you can convert dataset!
+Data can then be converted to lerobot dataset using the gello_to_lerobot script.
+
+```
+uv run gello/data_utils/gello_to_lerobot.py --raw_dir <raw data dir> ----out_dir <out data dir> 
+# example
+uv run gello/data_utils/gello_to_lerobot.py --raw_dir ./data/gello_datasets/lite6 --out_dir ./data/lerobot_datasets/lite6_pick_place --fps 30 --video true --use_delta_action true
 ```
 
 ## Running a bimanual system with GELLO
