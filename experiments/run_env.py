@@ -11,7 +11,6 @@ import tyro
 from lerobot.configs import parser
 from gello.agents.agent import BimanualAgent, DummyAgent
 from gello.agents.gello_agent import GelloAgent
-from gello.agents.pi0_agent import Pi0AgentConfig, Pi0Agent
 from gello.agents.diffusion_agent import DiffusionAgent
 from gello.data_utils.format_obs import save_frame
 from gello.env import RobotEnv
@@ -46,13 +45,9 @@ class Args:
     bimanual: bool = False
     verbose: bool = False
 
-    # pi0用の設定
-    pi0: Pi0AgentConfig = None
-    policy_path: str = "models/020000_angleonly/pretrained_model"
-    task: str = "Pick up the red square block and Put it onto the white plate."
-    use_delta_action: bool = False  # モデルが角度の差分を出力する場合は True に設定
-    use_joint_vel: bool = False  # モデルが関節速度を入力として受け取る場合は True に設定
-    use_ee_pos_quat: bool = False  # モデルがエンドエフェクタの位置・姿勢を入力として受け取る場合は True に設定
+    config_name: str = None
+    checkpoint_dir: str = None
+    prompt: str = "Pick up the red square block and Put it onto the white plate."
     varbose: bool = True
 
 
@@ -82,7 +77,9 @@ def main(args: Args):
             from gello.agents.quest_agent import SingleArmQuestAgent
 
             left_agent = SingleArmQuestAgent(robot_type=args.robot_type, which_hand="l")
-            right_agent = SingleArmQuestAgent(robot_type=args.robot_type, which_hand="r")
+            right_agent = SingleArmQuestAgent(
+                robot_type=args.robot_type, which_hand="r"
+            )
             agent = BimanualAgent(left_agent, right_agent)
             # raise NotImplementedError
         elif args.agent == "spacemouse":
@@ -90,7 +87,9 @@ def main(args: Args):
 
             left_path = "/dev/hidraw0"
             right_path = "/dev/hidraw1"
-            left_agent = SpacemouseAgent(robot_type=args.robot_type, device_path=left_path, verbose=args.verbose)
+            left_agent = SpacemouseAgent(
+                robot_type=args.robot_type, device_path=left_path, verbose=args.verbose
+            )
             right_agent = SpacemouseAgent(
                 robot_type=args.robot_type,
                 device_path=right_path,
@@ -122,9 +121,13 @@ def main(args: Args):
                     gello_port = usb_ports[0]
                     print(f"using port {gello_port}")
                 else:
-                    raise ValueError("No gello port found, please specify one or plug in gello")
+                    raise ValueError(
+                        "No gello port found, please specify one or plug in gello"
+                    )
             if args.start_joints is None:
-                reset_joints = np.deg2rad([0, 0, 0, 0, 0, 0, 0])  # Change this to your own reset joints
+                reset_joints = np.deg2rad(
+                    [0, 0, 0, 0, 0, 0, 0]
+                )  # Change this to your own reset joints
             else:
                 reset_joints = args.start_joints
             agent = GelloAgent(port=gello_port, start_joints=args.start_joints)
@@ -147,9 +150,24 @@ def main(args: Args):
         elif args.agent == "dummy" or args.agent == "none":
             agent = DummyAgent(num_dofs=robot_client.num_dofs())
         elif args.agent == "pi0":
+            from gello.agents.pi0_agent import Pi0AgentConfig, Pi0Agent
+
             agent = Pi0Agent(config=args.pi0)
         elif args.agent == "diffusion":
-            agent = DiffusionAgent(policy_path=args.policy_path, task=args.task, verbose=args.verbose)
+            agent = DiffusionAgent(
+                checkpoint_dir=args.checkpoint_dir,
+                task=args.prompt,
+                verbose=args.verbose,
+            )
+        elif args.agent == "openpi":
+            from gello.agents.openpi_agent import OpenPiAgent
+
+            agent = OpenPiAgent(
+                config_name=args.config_name,
+                checkpoint_dir=args.checkpoint_dir,
+                prompt=args.prompt,
+                verbose=args.verbose,
+            )
         elif args.agent == "policy":
             raise NotImplementedError("add your imitation policy here if there is one")
         else:
@@ -179,11 +197,15 @@ def main(args: Args):
             start_pos[id_mask],
             joints[id_mask],
         ):
-            print(f"joint[{i}]: \t delta: {delta:4.3f} , leader: \t{joint:4.3f} , follower: \t{current_j:4.3f}")
+            print(
+                f"joint[{i}]: \t delta: {delta:4.3f} , leader: \t{joint:4.3f} , follower: \t{current_j:4.3f}"
+            )
         return
 
     print(f"Start pos: {len(start_pos)}", f"Joints: {len(joints)}")
-    assert len(start_pos) == len(joints), f"agent output dim = {len(start_pos)}, but env dim = {len(joints)}"
+    assert len(start_pos) == len(
+        joints
+    ), f"agent output dim = {len(start_pos)}, but env dim = {len(joints)}"
 
     max_delta = 0.05
     for _ in range(25):
@@ -207,7 +229,9 @@ def main(args: Args):
         # print which joints are too big
         joint_index = np.where(action - joints > 0.8)
         for j in joint_index:
-            print(f"Joint [{j}], leader: {action[j]}, follower: {joints[j]}, diff: {action[j] - joints[j]}")
+            print(
+                f"Joint [{j}], leader: {action[j]}, follower: {joints[j]}, diff: {action[j] - joints[j]}"
+            )
         exit()
 
     if args.use_save_interface:
@@ -235,7 +259,11 @@ def main(args: Args):
             state = kb_interface.update()
             if state == "start":
                 dt_time = datetime.datetime.now()
-                save_path = Path(args.data_dir).expanduser() / args.agent / dt_time.strftime("%m%d_%H%M%S")
+                save_path = (
+                    Path(args.data_dir).expanduser()
+                    / args.agent
+                    / dt_time.strftime("%m%d_%H%M%S")
+                )
                 save_path.mkdir(parents=True, exist_ok=True)
                 print(f"Saving to {save_path}")
             elif state == "save":
@@ -249,6 +277,7 @@ def main(args: Args):
         obs = env.step(action)
 
 
-# python experiments/run_env.py --agent=pi0 --hz 1 --pi0.policy_path=models/pi0/030000_delta/pretrained_model --pi0.use_delta_action=true
+# uv run experiments/run_env.py --agent=openpi --hz=5 --config_name pi0_lite6_low_mem_finetune --checkpoint_dir models/openpi/pi0_lite6_low_mem_finetune/lite6_pickplace/30000
+# uv run experiments/run_env.py --agent=gello --hz=30 --gello_port=/dev/ttyUSB0 --use_save_interface=true --data_dir=/home/work/gello_data
 if __name__ == "__main__":
     main()

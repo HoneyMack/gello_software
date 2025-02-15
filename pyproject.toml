@@ -6,12 +6,13 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
 dependencies = [
-    "dm-control>=1.0.27",
+    "dm-control>=1.0.14",
     "matplotlib>=3.10.0",
     "mediapy>=1.2.2",
     "natsort>=8.4.0",
     "numpy-quaternion>=2024.0.7",
     "opencv-python>=4.11.0.86",
+    "openpi",
     "pillow>=11.1.0",
     "pure-python-adb>=0.3.0.dev0",
     "pygame>=2.6.1",
@@ -24,6 +25,11 @@ dependencies = [
     "tyro>=0.9.14",
     "ur-rtde>=1.6.0",
     "xarm>=0.0.4",
+    "xarm-eef-dynamixel-wrapper",
     "xarm-python-sdk>=1.14.7",
     "zmq>=0.0.0",
 ]
+
+[tool.uv.sources]
+openpi = { path = "third_party/openpi" }
+xarm-eef-dynamixel-wrapper = { path = "third_party/xarm_eef_dynamixel_wrapper" }

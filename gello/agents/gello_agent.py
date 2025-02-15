@@ -122,6 +122,35 @@ PORT_CONFIG_MAP: Dict[str, DynamixelRobotConfig] = {
         gripper_config=(8, 199, 157),
         baudrate=1000000,
     ),
+    # Lite6 251 (usb ver)
+    "/dev/ttyUSB0": DynamixelRobotConfig(
+        joint_ids=(2,3,4,5,6,7),
+        joint_offsets=(
+            np.pi,
+            np.pi,
+            np.pi,
+            np.pi,
+            np.pi,
+            np.pi
+        ),
+        joint_signs=(1,1,1,1,1,1),
+        gripper_config=(8, 199, 157),
+        baudrate=1000000,
+    ),
+    "/dev/ttyUSB1": DynamixelRobotConfig(
+        joint_ids=(2,3,4,5,6,7),
+        joint_offsets=(
+            np.pi,
+            np.pi,
+            np.pi,
+            np.pi,
+            np.pi,
+            np.pi
+        ),
+        joint_signs=(1,1,1,1,1,1),
+        gripper_config=(8, 199, 157),
+        baudrate=1000000,
+    ),
 }
 
 
