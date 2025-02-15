@@ -1,0 +1,29 @@
+[project]
+name = "gello-software"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+    "dm-control>=1.0.27",
+    "matplotlib>=3.10.0",
+    "mediapy>=1.2.2",
+    "natsort>=8.4.0",
+    "numpy-quaternion>=2024.0.7",
+    "opencv-python>=4.11.0.86",
+    "pillow>=11.1.0",
+    "pure-python-adb>=0.3.0.dev0",
+    "pygame>=2.6.1",
+    "pyqt6>=6.8.1",
+    "pyquaternion>=0.9.9",
+    "pyrealsense2>=2.55.1.6486",
+    "pyspacemouse>=1.1.4",
+    "quaternion>=3.5.2.post4",
+    "termcolor>=2.5.0",
+    "tyro>=0.9.14",
+    "ur-rtde>=1.6.0",
+    "xarm>=0.0.4",
+    "xarm-python-sdk>=1.14.7",
+    "zmq>=0.0.0",
+]
