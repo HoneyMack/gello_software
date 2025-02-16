@@ -129,6 +129,7 @@ ffmpeg with svt-av1 codec is required to convert gello raw data to lerobot datas
 I provide a script to install ffmpeg with svt-av1 codec. 
 ```bash
 ./installer/install_ffmpeg.sh # PLEASE RUN ONLY ONCE!
+ # reload bash or source ~/.bashrc after installing ffmpeg to reflect bin path.
 ```
 ### convertion
 Now you can convert dataset!

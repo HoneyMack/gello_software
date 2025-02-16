@@ -85,4 +85,3 @@ make install
 
 # Add ffmpeg to PATH
 echo 'export PATH="$HOME/.ffmpeg/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
