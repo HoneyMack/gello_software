@@ -9,7 +9,7 @@ from gello.zmq_core.camera_node import ZMQClientCamera
 
 @dataclass
 class Args:
-    ports: Tuple[int, ...] = (5000, 5001)
+    ports: Tuple[int, ...] = (5000, 5002)
     hostname: str = "127.0.0.1"
     # hostname: str = "128.32.175.167"
 
@@ -32,6 +32,6 @@ def main(args):
             cv2.imshow(display_name, image_depth)
             cv2.waitKey(1)
 
-
+# uv run experiments/launch_camera_clients.py 
 if __name__ == "__main__":
     main(tyro.cli(Args))
