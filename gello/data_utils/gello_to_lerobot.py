@@ -44,9 +44,6 @@ class ConvertConfig:
     add_depth: bool = False
 
 
-PUSHT_TASK = "Pick up the red square block and Put it onto the white plate."
-
-
 def define_gello_features(cfg: ConvertConfig) -> Dict[str, Any]:
     # 新たなキー構成に合わせた features を定義
     gello_features = {
@@ -55,7 +52,7 @@ def define_gello_features(cfg: ConvertConfig) -> Dict[str, Any]:
             "shape": (256, 256, 3),
             "names": ["height", "width", "channel"],
             "video_info": {
-                "video.fps": 10.0,
+                "video.fps": cfg.fps,
                 "video.codec": "libx265",
                 "video.pix_fmt": "yuv420p",
                 "video.is_depth_map": "false",
@@ -67,7 +64,7 @@ def define_gello_features(cfg: ConvertConfig) -> Dict[str, Any]:
             "shape": (256, 256, 3),
             "names": ["height", "width", "channel"],
             "video_info": {
-                "video.fps": 10.0,
+                "video.fps": cfg.fps,
                 "video.codec": "libx265",
                 "video.pix_fmt": "yuv420p",
                 "video.is_depth_map": "false",
@@ -116,7 +113,7 @@ def define_gello_features(cfg: ConvertConfig) -> Dict[str, Any]:
             "shape": (256, 256),
             "names": ["height", "width"],
             "video_info": {
-                "video.fps": 10.0,
+                "video.fps": cfg.fps,
                 "video.codec": "libx265",
                 "video.pix_fmt": "gray",
                 "video.is_depth_map": "true",
@@ -128,7 +125,7 @@ def define_gello_features(cfg: ConvertConfig) -> Dict[str, Any]:
             "shape": (256, 256),
             "names": ["height", "width"],
             "video_info": {
-                "video.fps": 10.0,
+                "video.fps": cfg.fps,
                 "video.codec": "libx265",
                 "video.pix_fmt": "gray",
                 "video.is_depth_map": "true",
@@ -252,6 +249,29 @@ def convert_gello_to_lerobot_format(cfg: ConvertConfig):
     """
     gello 形式のデータ（pickle ファイル群）を読み込み，
     LeRobotDatasetV2 形式に変換して out_dir に保存する関数
+
+    ディレクトリ構造は以下（タスク名をディレクトリ名にする）
+
+    raw_dir
+    |-- fold cloth
+    |   |-- 0216_062353
+    |   |   |-- 2025-02-16T06:23:59.187084.pkl
+    |   |   |-- 2025-02-16T06:23:59.219524.pkl
+    |   |   ...
+    |   |   |-- 2025-02-16T06:23:59.385596.pkl
+    |   `-- 0216_062404
+    |   ...
+    |-- pick place
+    |   |-- 0216_062353
+    |   |   |-- 2025-02-16T06:23:59.187084.pkl
+    |   |   |-- 2025-02-16T06:23:59.219524.pkl
+    |   |   ...
+    |   |   |-- 2025-02-16T06:23:59.385596.pkl
+    |   `-- 0216_062404
+    |   ...
+
+
+
     """
     raw_dir = Path(cfg.raw_dir)
     out_dir = Path(cfg.out_dir)
@@ -269,23 +289,29 @@ def convert_gello_to_lerobot_format(cfg: ConvertConfig):
         image_writer_threads=4,
     )
 
-    # raw_dir 内の各エピソードフォルダを処理
-    episode_paths = sorted([p for p in raw_dir.glob("*") if p.is_dir()])
-    for episode_idx, episode_path in enumerate(episode_paths):
-        print(f"[INFO]: Processing episode {episode_path}")
-        frames = load_gello_episode(cfg, episode_path)
-        for frame in frames:
-            dataset.add_frame(frame)
-        dataset.save_episode(task=PUSHT_TASK)
-        if cfg.debug:
-            break
+    # ディレクトリ名をタスク名として利用
+    for task_dir in raw_dir.iterdir():
+        if not task_dir.is_dir():
+            continue
+        task_name = task_dir.name
+        print(f"[INFO]: Processing task '{task_name}'")
+        # raw_dir 内の各エピソードフォルダを処理
+        episode_paths = sorted([p for p in task_dir.glob("*") if p.is_dir()])
+        for episode_idx, episode_path in enumerate(episode_paths):
+            print(f"[INFO]: Processing episode {episode_path}")
+            frames = load_gello_episode(cfg, episode_path)
+            for frame in frames:
+                dataset.add_frame(frame)
+            dataset.save_episode(task=task_name)
+            if cfg.debug:
+                break
 
     # 最終的にデータセットを確定（不要な画像ファイルは削除）
-    dataset.consolidate(keep_image_files=True)
+    dataset.consolidate(keep_image_files=False)
     print(f"[INFO]: Dataset saved to {out_dir}")
     return dataset
 
 
-# uv run gello/data_utils/gello_to_lerobot.py --raw_dir ./data/gello_datasets/lite6 --out_dir ./data/lerobot_datasets/lite6_pick_place --fps 30 --video true --use_delta_action true
+# uv run gello/data_utils/gello_to_lerobot.py --raw_dir /home/work/gello_data/lite6 --out_dir ./data/lerobot_datasets/lite6_fold_unfold --fps 30 --video true --use_delta_action true
 if __name__ == "__main__":
     convert_gello_to_lerobot_format()
