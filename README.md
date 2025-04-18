@@ -109,6 +109,8 @@ The supported robots are in `gello/robots`.
  * Lite6: [xArm python SDK](https://github.com/xArm-Developer/xArm-Python-SDK)
 
 ```
+# Launch camera nodes
+uv run experiments/launch_camera_nodes.py
 # Launch all of the node
 uv run experiments/launch_nodes.py --robot=<your robot>
 # run the enviroment loop
